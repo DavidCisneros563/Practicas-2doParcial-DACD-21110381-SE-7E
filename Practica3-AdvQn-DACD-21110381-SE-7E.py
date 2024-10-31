@@ -1,4 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Oct 29 08:55:29 2024
+
+@author: David
+"""
+
 import sqlite3
+import tkinter as tk
+from tkinter import messagebox, simpledialog
+from PIL import Image, ImageTk
 
 # Conectar a la base de datos o crearla si no existe
 conn = sqlite3.connect('futbol_game.db')
@@ -37,41 +47,48 @@ def agregar_jugadores_iniciales():
 
 # Función para hacer preguntas al usuario
 def hacer_pregunta(pregunta):
-    respuesta = input(pregunta + " (sí/no): ").lower()
-    while respuesta not in ['sí', 'no']:
-        respuesta = input("Por favor responde 'sí' o 'no': ").lower()
-    
-    # Guardar la respuesta en la base de datos
-    cursor.execute("INSERT INTO respuestas (pregunta, respuesta) VALUES (?, ?)", (pregunta, respuesta))
+    respuesta = messagebox.askyesno("Pregunta", pregunta)
+    cursor.execute("INSERT INTO respuestas (pregunta, respuesta) VALUES (?, ?)", (pregunta, 'sí' if respuesta else 'no'))
     conn.commit()
-    
-    return respuesta == 'sí'
+    return respuesta
 
 # Función para agregar un nuevo jugador a la base de datos
 def agregar_jugador():
-    nombre = input("¿Cuál era el jugador correcto?: ").capitalize()
+    nombre = simpledialog.askstring("Agregar Jugador", "¿Cuál era el jugador correcto?:")
     if cursor.execute("SELECT * FROM jugadores WHERE nombre = ?", (nombre,)).fetchone():
-        print("Este jugador ya está registrado.")
+        messagebox.showinfo("Info", "Este jugador ya está registrado.")
         return
 
-    nacionalidad = input(f"¿Cuál es la nacionalidad de {nombre}?: ")
-    posicion = input(f"¿Cuál es la posición de {nombre}?: ")
-    club = input(f"¿Cuál es el club de {nombre}?: ")
-    habilidades = input(f"¿Cuáles son las habilidades de {nombre}?: ")
+    nacionalidad = simpledialog.askstring("Agregar Jugador", f"¿Cuál es la nacionalidad de {nombre}?:")
+    posicion = simpledialog.askstring("Agregar Jugador", f"¿Cuál es la posición de {nombre}?:")
+    club = simpledialog.askstring("Agregar Jugador", f"¿Cuál es el club de {nombre}?:")
+    habilidades = simpledialog.askstring("Agregar Jugador", f"¿Cuáles son las habilidades de {nombre}?:")
     
     cursor.execute('''INSERT INTO jugadores (nombre, nacionalidad, posicion, club, habilidades)
                       VALUES (?, ?, ?, ?, ?)''', (nombre, nacionalidad, posicion, club, habilidades))
     conn.commit()
-    print(f"{nombre} ha sido agregado a la base de datos.")
+    messagebox.showinfo("Info", f"{nombre} ha sido agregado a la base de datos.")
 
-# Encadenamiento hacia adelante con recuperación desde la base de datos
+# Función para mostrar la imagen del jugador
+def mostrar_imagen(jugador):
+    try:
+        image_path = f"{jugador.lower().replace(' ','_')}.png"  # Asegúrate de que los nombres de imagen coincidan
+        img = Image.open(image_path)
+        img = img.resize((200, 200), Image.LANCZOS)
+        img_tk = ImageTk.PhotoImage(img)
+
+        img_label.config(image=img_tk)
+        img_label.image = img_tk  # Mantener una referencia a la imagen
+    except Exception as e:
+        messagebox.showerror("Error", "No se pudo cargar la imagen.")
+
+# Función principal del juego
 def encadenamiento_adelante():
     cursor.execute("SELECT * FROM jugadores")
     jugadores = cursor.fetchall()
     
     posibles = {j[0]: {"nacionalidad": j[1], "posicion": j[2], "club": j[3], "habilidades": j[4]} for j in jugadores}
 
-    # Aplicar reglas según las respuestas
     if hacer_pregunta("¿El jugador es argentino?"):
         posibles = {k: v for k, v in posibles.items() if v["nacionalidad"] == "Argentina"}
     elif hacer_pregunta("¿El jugador es portugués?"):
@@ -82,40 +99,47 @@ def encadenamiento_adelante():
     elif hacer_pregunta("¿Juega como defensa?"):
         posibles = {k: v for k, v in posibles.items() if v["posicion"] == "Defensa"}
 
-    # Si quedan más de un jugador, preguntar sobre el club
     if len(posibles) > 1:
-        print("Todavía quedan varios jugadores posibles. Vamos a hacer más preguntas.")
-        clubes_posibles = list(set(v["habilidades"] for v in posibles.values()))  # Obtener clubes distintos de los jugadores restantes
-        
-        # Hacer preguntas sobre los clubes solo si hay más de un club posible
-        for habilidades in clubes_posibles:
-            if hacer_pregunta(f"¿El jugador es {habilidades}?"):
+        messagebox.showinfo("Info", "Todavía quedan varios jugadores posibles.")
+        for habilidades in set(v["habilidades"] for v in posibles.values()):
+            if hacer_pregunta(f"¿El jugador tiene habilidades de {habilidades}?"):
                 posibles = {k: v for k, v in posibles.items() if v["habilidades"] == habilidades}
                 break
     
-    # Mostrar resultado si queda solo uno
     if len(posibles) == 1:
         jugador_adivinado = list(posibles.keys())[0]
-        print(f"¿aaaaaah entonces tu jugador es {jugador_adivinado}?")
-        if hacer_pregunta("¿A huevo que si, eda?"):
-            print("¡He adivinado correctamente!")
+        mostrar_imagen(jugador_adivinado)  # Mostrar la imagen del jugador
+        if hacer_pregunta(f"¿El jugador es {jugador_adivinado}?"):
+            messagebox.showinfo("Info", "¡He adivinado correctamente!")
         else:
-            print("Vaya, no lo adiviné.")
+            messagebox.showinfo("Info", "Vaya, no lo adiviné.")
             agregar_jugador()
     elif len(posibles) > 1:
-        print(f"Algo salió mal, todavía hay varios jugadores: {', '.join(posibles.keys())}")
+        messagebox.showinfo("Info", f"Aún hay varios jugadores: {', '.join(posibles.keys())}")
     else:
-        print("No se pudo determinar el jugador.")
+        messagebox.showinfo("Info", "No se pudo determinar el jugador.")
         agregar_jugador()
 
 # Lógica del juego
 def juego():
-    print("¡Bienvenido al juego de Adivina Quién, versión futbolística!")
     agregar_jugadores_iniciales()  # Asegurar que los jugadores iniciales estén cargados en la base de datos
     encadenamiento_adelante()
-    
-# Ejecutar el juego
-juego()
+
+# Configuración de la interfaz gráfica
+root = tk.Tk()
+root.title("Juego de Adivina Quién - Versión Futbolística")
+root.geometry("400x500")
+root.config(bg="#a3c1ad")
+
+# Crear botón para iniciar el juego
+start_button = tk.Button(root, text="Iniciar Juego", command=juego, bg="#ffdd57", font=("Arial", 14))
+start_button.pack(pady=20)
+
+# Label para mostrar la imagen
+img_label = tk.Label(root, bg="#a3c1ad")
+img_label.pack(pady=10)
+
+root.mainloop()
 
 # Cerrar la conexión a la base de datos al final
 conn.close()
